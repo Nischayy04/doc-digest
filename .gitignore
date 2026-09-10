@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files (real secrets/config, never commit)
+.env
+**/.env
+!**/.env.example
+
+# Uploaded document storage (local dev)
+storage/
+**/storage/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Docker
+*.log

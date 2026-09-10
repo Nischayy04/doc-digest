@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: documents
+    ports:
+      # host 5433 -> container 5432. Mapped off the default port because this
+      # dev machine has a native Postgres install already bound to 5432;
+      # inside the Compose network other containers still reach this one at
+      # postgres:5432 (the container's own port), unaffected by this mapping.
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  document-service:
+    build: ./document-service
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/documents
+      STORAGE_DIR: /app/storage
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - document-files:/app/storage
+
+  reporting-service:
+    build: ./reporting-service
+    environment:
+      DOCUMENT_SERVICE_URL: http://document-service:8001
+    ports:
+      - "8002:8002"
+    depends_on:
+      - document-service
+
+  streamlit-app:
+    build: ./streamlit-app
+    environment:
+      DOCUMENT_SERVICE_URL: http://document-service:8001
+      REPORTING_SERVICE_URL: http://reporting-service:8002
+    ports:
+      - "8501:8501"
+    depends_on:
+      - document-service
+      - reporting-service
+
+volumes:
+  postgres-data:
+  document-files:
