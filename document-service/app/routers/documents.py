@@ -6,10 +6,13 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.document import Document
+from app.models.chat_message import ChatMessage
+from app.models.document import Document, DocumentStatus
 from app.models.processing_history import ProcessingHistory
+from app.schemas.chat_message import AskRequest, ChatMessageRead
 from app.schemas.document import DocumentRead
 from app.schemas.processing_history import ProcessingHistoryRead
+from app.services.chat import ask_question
 from app.services.processing import process_document
 from app.services.storage import UploadTooLargeError, save_upload_file
 
@@ -95,3 +98,35 @@ def get_document_history(
         .order_by(ProcessingHistory.created_at)
         .all()
     )
+
+
+@router.get("/{document_id}/messages", response_model=list[ChatMessageRead])
+def get_document_messages(
+    document_id: UUID, db: Session = Depends(get_db)
+) -> list[ChatMessage]:
+    document = db.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return (
+        db.query(ChatMessage)
+        .filter(ChatMessage.document_id == document_id)
+        .order_by(ChatMessage.created_at)
+        .all()
+    )
+
+
+@router.post("/{document_id}/ask", response_model=ChatMessageRead)
+def ask_document_question(
+    document_id: UUID, request: AskRequest, db: Session = Depends(get_db)
+) -> ChatMessage:
+    document = db.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if document.status != DocumentStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail="Document must have completed processing before it can be asked about",
+        )
+
+    return ask_question(db, document, request.question)

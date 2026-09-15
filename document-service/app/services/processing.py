@@ -7,7 +7,8 @@ from app.db.session import SessionLocal
 from app.models.document import Document, DocumentStatus
 from app.models.processing_history import ProcessingHistory
 from app.services.checks import CHECKS
-from app.services.extraction import extract_metadata
+from app.services.extraction import extract_metadata, extract_text
+from app.services.summarization import generate_summary
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,17 @@ def process_document(document_id: UUID) -> None:
             return
 
         document.extracted_metadata = metadata
+
+        # Summarization is a best-effort enhancement layered on top of the
+        # core pipeline, not a workflow gate like the checks/extraction
+        # above — if Ollama is down, slow, or errors, the document should
+        # still complete normally rather than fail the whole upload.
+        try:
+            document.summary = generate_summary(extract_text(document))
+        except Exception as exc:
+            logger.warning("Summarization failed for document %s", document_id, exc_info=exc)
+            document.summary = None
+
         _transition(db, document, DocumentStatus.COMPLETED, "Processing completed")
     finally:
         db.close()

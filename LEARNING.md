@@ -253,4 +253,26 @@ Writing a test to prove the catch-all handler actually works (not just "it looks
 
 ---
 
-*(Later phases — beyond v1 — are tracked in ROADMAP.md rather than appended here.)*
+## Phase 7 — AI-assisted learning: Ollama-backed summarization + Q&A
+
+### Running an LLM locally vs. calling a hosted API
+
+Calling Claude or GPT means sending a prompt over the network to a provider's data center and paying per token — someone else owns and maintains the hardware, and you get a frontier-quality model with no setup. **Ollama** flips that: it's a program that runs an open-weight model (here, Llama 3.1 8B) directly on your own machine, and exposes a local HTTP API (`http://localhost:11434`) that looks similar to a hosted provider's chat API but never leaves your network. The trade-off is real, not free: local CPU inference is slower (this project sets a 120-second timeout on Ollama calls, versus a couple of seconds typical for a hosted API), the model itself is smaller and less capable than a frontier model, and there's no equivalent of prompt caching to make repeated context cheap — every question re-sends the full document text, and you pay that cost in *latency* instead of *dollars*. What you get in exchange is zero marginal cost per request, which is the entire reason this feature exists.
+
+### Why summarization is best-effort but Q&A is not
+
+The processing pipeline's existing steps (`check_extension_allowed`, `check_not_empty`, `extract_metadata`) are *gates*: if any of them fails, the document is marked FAILED, because they test something intrinsic to the file itself — a bad extension or empty file really does mean the document can't be processed. Summarization is different in kind: it calls an external service (Ollama) that can be slow, temporarily down, or erroring for reasons that have nothing to do with whether the document itself is valid. Treating a summarization failure the same as a bad-extension failure would mean the whole app becomes unusable the moment the Ollama container isn't running — so `app/services/processing.py` wraps the summarization step in its own `try/except` and lets the document reach COMPLETED regardless, with `summary = null` on failure.
+
+The `/ask` endpoint makes the opposite choice on purpose: it's a synchronous, user-initiated request — a person is sitting there waiting for an answer to a question they just typed. Silently swallowing an Ollama failure there would mean the user gets nothing back with no explanation. So `ask_question` (`app/services/chat.py`) lets `OllamaServiceError` propagate uncaught, and the same `DocumentServiceError`-style pattern from `reporting-service` (a dedicated exception → a central handler in `main.py` → `502`) surfaces it as a real, visible error instead.
+
+### Multi-turn conversation state, without a "conversation" object
+
+There's no session or conversation entity in this design — just an append-only `chat_messages` table (`document_id`, `role`, `content`, `created_at`), the same shape as `ProcessingHistory`. "Multi-turn" isn't a special mechanism; it's just that every call to `ask_question` re-reads *all* prior messages for that document, in order, and replays them into Ollama's `messages` list alongside the new question, before persisting the new turn back to the same table. The model itself has no memory between calls — what looks like "the model remembering the conversation" is really "the application reconstructing the whole conversation and handing it over fresh, every single time." This is the same pattern any LLM chat API uses, hosted or local: state lives in your database, not in the model.
+
+### Structured output from a prompt, not a schema
+
+Unlike the FastAPI/Pydantic validation used everywhere else in this project, there's no way to *enforce* that Ollama returns a summary in a particular shape — a system prompt (`app/services/summarization.py`) just *asks* for a headline plus key points, and the model is trusted to follow that instruction. This is a meaningfully weaker guarantee than Pydantic's "the API 422s if the shape is wrong" — an LLM can drift from the requested format, especially a smaller local model under load. For this project's scope (rendering the result as Markdown in Streamlit) that's an acceptable trade-off; a stricter integration would validate or re-prompt on a malformed response, which is exactly the kind of complexity RAG/production LLM pipelines add and this project deliberately doesn't need yet.
+
+### Why still no RAG
+
+Nothing about adding real Q&A changed the answer from `CLAUDE.md`'s original reasoning: a single uploaded document — even a long one — fits inside Llama 3.1's context window once capped at `MAX_WORDS` (`app/services/summarization.py`), so "retrieval" is just `extract_text()` reading the file. Retrieval-augmented generation (chunking, embeddings, a vector database) earns its complexity when you need to search *across* many documents to find the few relevant chunks — a different problem than "answer questions about the one document the user has open," which is all this feature does. Recognizing that distinction is the actual lesson here, more than any specific RAG mechanic.

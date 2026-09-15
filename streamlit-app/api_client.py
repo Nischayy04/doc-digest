@@ -12,6 +12,10 @@ DOCUMENT_SERVICE_URL = os.environ.get("DOCUMENT_SERVICE_URL", "http://localhost:
 REPORTING_SERVICE_URL = os.environ.get("REPORTING_SERVICE_URL", "http://localhost:8002")
 
 TIMEOUT_SECONDS = 10
+# Longer timeout for /ask specifically — it waits on a real Ollama chat
+# completion, which is slow on CPU (document-service itself allows up to
+# ollama_timeout_seconds=120s for that call).
+ASK_TIMEOUT_SECONDS = 130
 
 
 class ApiError(Exception):
@@ -63,6 +67,24 @@ def get_document(document_id: str) -> dict:
 
 def get_document_history(document_id: str) -> list[dict]:
     return _get(DOCUMENT_SERVICE_URL, f"/api/v1/documents/{document_id}/history")
+
+
+def get_document_messages(document_id: str) -> list[dict]:
+    return _get(DOCUMENT_SERVICE_URL, f"/api/v1/documents/{document_id}/messages")
+
+
+def ask_question(document_id: str, question: str) -> dict:
+    try:
+        response = requests.post(
+            f"{DOCUMENT_SERVICE_URL}/api/v1/documents/{document_id}/ask",
+            json={"question": question},
+            timeout=ASK_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        raise ApiError(f"Could not reach document-service: {exc}") from exc
+    if not response.ok:
+        raise ApiError(_error_message(response))
+    return response.json()
 
 
 def get_document_content(document_id: str) -> tuple[bytes, str]:

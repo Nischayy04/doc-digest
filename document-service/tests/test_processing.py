@@ -86,3 +86,40 @@ def test_history_for_missing_document_returns_404(client):
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_successful_summarization_is_stored_on_the_document(client):
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("notes.txt", io.BytesIO(b"hello world"), "text/plain")},
+    )
+    document_id = response.json()["id"]
+
+    document = client.get(f"/api/v1/documents/{document_id}").json()
+
+    # mock_summarization (conftest.py, autouse) stubs generate_summary for
+    # every test — this asserts the pipeline actually wires its result onto
+    # the document rather than testing Ollama's own output.
+    assert document["status"] == "COMPLETED"
+    assert document["summary"] == "Mocked summary."
+
+
+def test_summarization_failure_does_not_fail_the_document(client, monkeypatch):
+    # Summarization is best-effort: unlike a failed check or a metadata
+    # extraction error, an Ollama failure should not mark the document
+    # FAILED — it should still reach COMPLETED, just without a summary.
+    def broken_summarize(text):
+        raise RuntimeError("Ollama is unreachable")
+
+    monkeypatch.setattr("app.services.processing.generate_summary", broken_summarize)
+
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("notes.txt", io.BytesIO(b"hello world"), "text/plain")},
+    )
+    document_id = response.json()["id"]
+
+    document = client.get(f"/api/v1/documents/{document_id}").json()
+
+    assert document["status"] == "COMPLETED"
+    assert document["summary"] is None

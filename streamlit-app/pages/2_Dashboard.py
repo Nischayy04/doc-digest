@@ -9,7 +9,7 @@ from api_client import (
     get_summary_report,
 )
 
-st.set_page_config(page_title="Dashboard - Document Workflow Platform", layout="wide")
+st.set_page_config(page_title="Dashboard - Doc Digest", layout="wide")
 st.title("Dashboard")
 
 if st.button("Refresh"):

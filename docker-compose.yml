@@ -19,16 +19,31 @@ services:
       timeout: 5s
       retries: 5
 
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
   document-service:
     build: ./document-service
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/documents
       STORAGE_DIR: /app/storage
+      OLLAMA_BASE_URL: http://ollama:11434
     ports:
       - "8001:8001"
     depends_on:
       postgres:
         condition: service_healthy
+      # service_started (not service_healthy): ollama has no simple
+      # healthcheck-friendly CLI the way Postgres has pg_isready, and
+      # summarization/Q&A calls are designed to fail gracefully (or return
+      # 502) rather than require Ollama to be ready before document-service
+      # even starts.
+      ollama:
+        condition: service_started
     volumes:
       - document-files:/app/storage
 
@@ -55,3 +70,4 @@ services:
 volumes:
   postgres-data:
   document-files:
+  ollama-data:

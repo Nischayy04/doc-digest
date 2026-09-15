@@ -18,5 +18,9 @@ class Settings(BaseSettings):
     storage_dir: str = "./storage"
     max_upload_size_bytes: int = 20 * 1024 * 1024  # 20 MB
 
+    ollama_base_url: str = "http://ollama:11434"
+    ollama_model: str = "llama3.1"
+    ollama_timeout_seconds: float = 120.0  # local CPU generation is slow
+
 
 settings = Settings()

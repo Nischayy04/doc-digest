@@ -26,6 +26,18 @@ def db_engine() -> Generator:
     Base.metadata.drop_all(bind=engine)
 
 
+@pytest.fixture(autouse=True)
+def mock_summarization(monkeypatch) -> None:
+    """Summarization makes a real network call to Ollama — mocked by default
+    in every test so the suite stays fast/deterministic and doesn't depend on
+    an Ollama container being up. Tests that care about summarization
+    specifically (see test_processing.py) override this themselves via their
+    own monkeypatch call, which takes precedence within that test."""
+    monkeypatch.setattr(
+        "app.services.processing.generate_summary", lambda text: "Mocked summary."
+    )
+
+
 @pytest.fixture()
 def client(db_engine, tmp_path, monkeypatch) -> Generator[TestClient, None, None]:
     testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)

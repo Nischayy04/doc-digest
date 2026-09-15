@@ -2,19 +2,20 @@ import streamlit as st
 
 from api_client import ApiError, DOCUMENT_SERVICE_URL, REPORTING_SERVICE_URL, upload_document
 
-st.set_page_config(page_title="Document Workflow Platform", layout="wide")
+st.set_page_config(page_title="Doc Digest", layout="wide")
 
-st.title("Document Workflow Platform")
+st.title("Doc Digest")
 st.write(
-    "Upload a document below, then use **Documents** in the sidebar to track its "
-    "processing status and history, or **Dashboard** for aggregate metrics."
+    "Upload a document below. Once it's processed, use **Documents** in the sidebar "
+    "to read its AI-generated summary and ask follow-up questions about it, or "
+    "**Dashboard** for aggregate metrics."
 )
 
 st.subheader("Upload a document")
 st.caption(
-    "Accepted types: PDF and plain text (.txt). Processing (checks + metadata "
-    "extraction) runs in the background after upload — check the Documents "
-    "page a moment later to see the result."
+    "Accepted types: PDF and plain text (.txt). Processing (checks, metadata "
+    "extraction, and an AI-generated summary) runs in the background after "
+    "upload — check the Documents page a moment later to see the result."
 )
 
 uploaded_file = st.file_uploader("Choose a file", type=["pdf", "txt"])

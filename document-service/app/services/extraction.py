@@ -27,3 +27,16 @@ def _extract_pdf_metadata(file_path: str) -> dict:
 def _extract_text_metadata(file_path: str) -> dict:
     text = Path(file_path).read_text(encoding="utf-8", errors="replace")
     return {"word_count": len(text.split())}
+
+
+def extract_text(document: Document) -> str:
+    """Returns the document's full text content, for use as LLM context
+    (summarization, Q&A) — unlike extract_metadata, this isn't stored on the
+    document, it's re-read from file_path on demand each time it's needed."""
+    extension = Path(document.filename).suffix.lower()
+    if extension == ".pdf":
+        reader = PdfReader(document.file_path)
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    if extension == ".txt":
+        return Path(document.file_path).read_text(encoding="utf-8", errors="replace")
+    raise ValueError(f"No text extractor registered for extension '{extension}'")

@@ -4,6 +4,20 @@ Deliberately deferred upgrades — things v1 does *not* do, on purpose, so it st
 
 ---
 
+## Known gaps from Phase 7 — small, concrete, not yet done
+
+Unlike everything below this line, these two are already scoped and agreed, just not implemented yet — pick them up whenever.
+
+### Ollama's context window isn't actually being used
+Ollama defaults every session to `num_ctx: 4096` tokens unless a request explicitly overrides it, and `document-service/app/services/ollama_client.py`'s `chat()` doesn't currently set that option. So despite `summarization.py`'s `MAX_WORDS = 12000` cap (~15,600 tokens) suggesting a generous ceiling, the model can in practice only ever see roughly 3,000 words of a document — anything beyond ~5–10 pages is silently dropped rather than erroring, and summaries/answers quietly degrade instead of failing loudly. Confirmed directly against the running container: `ollama ps` reports `CONTEXT 4096` for the loaded `llama3.1` session, while `ollama show llama3.1` reports the model itself supports up to 131,072.
+
+**The fix:** pass `"options": {"num_ctx": N}` in the `/api/chat` request body in `ollama_client.py`, and lower `MAX_WORDS` (`summarization.py`, reused by `chat.py`) to match so the two numbers agree. RAM math for this model (KV cache ≈ 128KB/token, weights ≈ 5.6GB loaded) says `num_ctx` in the **16384–32768** range is comfortable on a 16GB laptop (≈8.5–10.5GB total including weights + KV cache + OS/Docker overhead) — the full 131072 window would need ~16GB+ for KV cache alone and isn't realistic on this hardware. 16384 (~20–40 pages) is a reasonable starting target.
+
+### Documents page: AI summary should be single-column, not side-by-side
+`streamlit-app/pages/1_Documents.py` currently renders the AI summary next to "Extracted metadata" in a two-column layout (`detail_col, metadata_col = st.columns(2)`), which squeezes a multi-paragraph summary into a narrow column and makes it hard to read. Change to a single-column layout: keep the filename/status/etc. fields and extracted metadata as they are, but render the AI summary full-width, below rather than beside them.
+
+---
+
 ### Event-driven sync between services (Kafka / RabbitMQ)
 Right now `reporting-service` calls `document-service`'s API on demand, every time a report is requested. At real scale this gets slow and puts load on `document-service` for every dashboard refresh. The production-grade fix: `document-service` publishes an event (e.g. "document status changed") to a message broker whenever something happens, and `reporting-service` consumes those events to maintain its *own* local, read-optimized copy of the data — no live API call needed per request. This is the real-world version of the database-per-service pattern, often paired with **CQRS** (Command Query Responsibility Segregation — separate models for writing vs reading data) and sometimes **event sourcing**. Teaches: async messaging, eventual consistency, idempotent consumers.
 

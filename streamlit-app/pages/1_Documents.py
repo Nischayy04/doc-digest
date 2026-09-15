@@ -2,13 +2,15 @@ import streamlit as st
 
 from api_client import (
     ApiError,
+    ask_question,
     get_document,
     get_document_content,
     get_document_history,
+    get_document_messages,
     list_documents,
 )
 
-st.set_page_config(page_title="Documents - Document Workflow Platform", layout="wide")
+st.set_page_config(page_title="Documents - Doc Digest", layout="wide")
 st.title("Documents")
 
 col_filter, col_refresh = st.columns([4, 1])
@@ -83,6 +85,14 @@ else:
         st.write("**Uploaded:**", document["created_at"])
         st.write("**Last updated:**", document["updated_at"])
     with metadata_col:
+        st.write("**AI summary**")
+        if document["summary"]:
+            st.markdown(document["summary"])
+        elif document["status"] == "COMPLETED":
+            st.caption("No summary was generated for this document.")
+        else:
+            st.caption("Not generated yet — available once processing completes.")
+
         st.write("**Extracted metadata**")
         st.json(document["extracted_metadata"] or {"info": "Not available yet"})
 
@@ -121,3 +131,35 @@ else:
             )
     else:
         st.caption("No processing history yet.")
+
+    st.divider()
+    st.subheader("Ask about this document")
+
+    if document["status"] != "COMPLETED":
+        st.caption(
+            "Available once this document finishes processing (status must be COMPLETED)."
+        )
+    else:
+        try:
+            chat_history = get_document_messages(selected_id)
+        except ApiError as exc:
+            st.error(f"Could not load chat history: {exc}")
+            chat_history = []
+
+        for message in chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        question = st.chat_input(
+            "Ask a question about this document", key=f"chat_input_{selected_id}"
+        )
+        if question:
+            with st.chat_message("user"):
+                st.markdown(question)
+            with st.spinner("Thinking..."):
+                try:
+                    ask_question(selected_id, question)
+                except ApiError as exc:
+                    st.error(f"Could not get an answer: {exc}")
+                else:
+                    st.rerun()

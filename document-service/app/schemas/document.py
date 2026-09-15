@@ -19,5 +19,6 @@ class DocumentRead(BaseModel):
     file_size: int
     status: DocumentStatus
     extracted_metadata: dict | None
+    summary: str | None
     created_at: datetime
     updated_at: datetime

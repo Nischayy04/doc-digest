@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Enum, Integer, String, Uuid, func
+from sqlalchemy import JSON, Enum, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -46,6 +46,7 @@ class Document(Base):
         default=DocumentStatus.UPLOADED,
     )
     extracted_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), nullable=False
     )
